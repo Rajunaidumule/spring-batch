@@ -1,0 +1,82 @@
+package com.td.springBatch.config;
+
+import com.td.springBatch.model.Employee;
+import com.td.springBatch.repo.EmployeeRepository;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.Step;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.infrastructure.item.data.RepositoryItemReader;
+import org.springframework.batch.infrastructure.item.data.RepositoryItemWriter;
+import org.springframework.batch.infrastructure.item.file.FlatFileItemReader;
+import org.springframework.batch.infrastructure.item.file.LineMapper;
+import org.springframework.batch.infrastructure.item.file.mapping.BeanWrapperFieldSetMapper;
+import org.springframework.batch.infrastructure.item.file.mapping.DefaultLineMapper;
+import org.springframework.batch.infrastructure.item.file.transform.DelimitedLineTokenizer;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
+
+@Configuration
+@EnableBatchProcessing
+public class EmployeeConfig {
+
+    @Autowired
+    EmployeeRepository repository;
+    @Autowired
+    JobRepository jobRepository;
+    @Bean
+    public FlatFileItemReader<Employee> reader() {
+        FlatFileItemReader<Employee> reader = new FlatFileItemReader<>(lineMapper());
+        reader.setLinesToSkip(1);
+        reader.setName("CSV-READER");
+        reader.setResource(new ClassPathResource("empdata.csv"));
+        return reader;
+    }
+
+    @Bean
+    public LineMapper <Employee> lineMapper(){
+        BeanWrapperFieldSetMapper beanWrapperFieldSetMapper = new BeanWrapperFieldSetMapper();
+        beanWrapperFieldSetMapper.setTargetType(Employee.class);
+
+        DelimitedLineTokenizer lineTokenizer =  new DelimitedLineTokenizer();
+        lineTokenizer.setDelimiter(",");
+        lineTokenizer.setNames("employeeId","empName","empDept");
+        lineTokenizer.setStrict(false);
+        DefaultLineMapper lineMapper = new DefaultLineMapper();
+        lineMapper.setFieldSetMapper(beanWrapperFieldSetMapper);
+        lineMapper.setLineTokenizer(lineTokenizer);
+
+        return lineMapper;
+    }
+
+    @Bean
+    public EmployeeProcessor processor() {
+        return new EmployeeProcessor();
+    }
+
+    @Bean
+    public RepositoryItemWriter<Employee> itemWriter() {
+        RepositoryItemWriter writer = new RepositoryItemWriter(repository);
+        writer.setMethodName("save");
+        return writer;
+    }
+    @Bean
+    public Step step() {
+        return new StepBuilder("employee-step", jobRepository)
+                .<Employee,Employee>chunk(10)
+                .reader(reader())
+                .processor(processor())
+                .writer(itemWriter())
+                .build();
+    }
+    @Bean
+    public Job job() {
+        return new JobBuilder("employee-job",jobRepository).start(step()).build();
+    }
+
+
+}
