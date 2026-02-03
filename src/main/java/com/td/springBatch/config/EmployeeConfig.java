@@ -19,6 +19,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
 @EnableBatchProcessing
@@ -28,6 +32,7 @@ public class EmployeeConfig {
     EmployeeRepository repository;
     @Autowired
     JobRepository jobRepository;
+
     @Bean
     public FlatFileItemReader<Employee> reader() {
         FlatFileItemReader<Employee> reader = new FlatFileItemReader<>(lineMapper());
@@ -67,15 +72,29 @@ public class EmployeeConfig {
     @Bean
     public Step step() {
         return new StepBuilder("employee-step", jobRepository)
-                .<Employee,Employee>chunk(10)
+                .<Employee,Employee>chunk(5)
                 .reader(reader())
                 .processor(processor())
                 .writer(itemWriter())
+                .taskExecutor(taskExecutor())
                 .build();
     }
     @Bean
     public Job job() {
         return new JobBuilder("employee-job",jobRepository).start(step()).build();
+    }
+
+    @Bean
+    public AsyncTaskExecutor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(10);
+        executor.setMaxPoolSize(50);
+        executor.setQueueCapacity(500);
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setPrestartAllCoreThreads(true);
+        executor.setThreadNamePrefix("AsyncTasker-");
+        executor.initialize();
+        return executor;
     }
 
 
